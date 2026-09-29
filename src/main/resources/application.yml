@@ -1,0 +1,34 @@
+server:
+  port: 8086
+
+spring:
+  application:
+    name: ms-campuslab-rabbitmq-admin
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${AUTH_ISSUER_URI:http://localhost:8080/realms/campuslab}
+
+# Cluster RabbitMQ (ec2-mq): la Management API vive en el puerto 15672 del
+# mismo host donde escucha AMQP en el 5672. Credenciales de administracion
+# del broker (no confundir con las credenciales AMQP de los productores).
+campuslab:
+  rabbitmq:
+    management-url: http://${RABBITMQ_HOST:localhost}:${RABBITMQ_MANAGEMENT_PORT:15672}
+    management-username: ${RABBITMQ_USERNAME:guest}
+    management-password: ${RABBITMQ_PASSWORD:guest}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    com.campuslab.rabbitmqadmin: INFO
