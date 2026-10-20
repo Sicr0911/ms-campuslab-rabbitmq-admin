@@ -19,6 +19,11 @@ campuslab:
     management-url: http://${RABBITMQ_HOST:localhost}:${RABBITMQ_MANAGEMENT_PORT:15672}
     management-username: ${RABBITMQ_USERNAME:guest}
     management-password: ${RABBITMQ_PASSWORD:guest}
+    vhost: ${RABBITMQ_VHOST:/}
+    # Topologia de la que dependen bookings y notify: RabbitAdminService
+    # rechaza (409) actualizarla o eliminarla desde esta API. Lista separada
+    # por comas (se inyecta con @Value).
+    protected-resources: ${RABBITMQ_PROTECTED_RESOURCES:cmd.direct,cmd.topic,cmd.dlx,q.cmd.email,q.cmd.prep,q.cmd.voucher,q.cmd.email.dlq,q.cmd.prep.dlq,q.cmd.voucher.dlq}
 
 management:
   endpoints:
