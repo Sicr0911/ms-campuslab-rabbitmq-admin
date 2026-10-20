@@ -13,8 +13,10 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtGra
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
+import java.text.Normalizer;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 /**
@@ -55,14 +57,24 @@ public class SecurityConfig {
 
     private Collection<GrantedAuthority> combinarAuthorities(Jwt jwt, JwtGrantedAuthoritiesConverter base) {
         Collection<GrantedAuthority> authorities = base.convert(jwt);
-        if (authorities == null || authorities.isEmpty()) {
-            List<String> roles = jwt.getClaimAsStringList("roles");
-            if (roles != null) {
-                return roles.stream()
-                        .map(r -> new SimpleGrantedAuthority("ROLE_" + r))
-                        .collect(Collectors.toList());
-            }
+        List<String> roles = (authorities == null || authorities.isEmpty())
+                ? jwt.getClaimAsStringList("roles")
+                : authorities.stream().map(a -> a.getAuthority().substring("ROLE_".length())).toList();
+        if (roles == null) {
+            return List.of();
         }
-        return authorities;
+        // Azure AD entrega los App Roles tal como se definieron ("Admin",
+        // "Tecnico", ...): se normalizan igual que en el BFF para que
+        // coincidan con hasRole('ADMIN') / hasAnyRole('TECNICO', ...).
+        return roles.stream()
+                .map(SecurityConfig::normalizarRol)
+                .map(r -> new SimpleGrantedAuthority("ROLE_" + r))
+                .collect(Collectors.toList());
+    }
+
+    /** Mayusculas y sin acentos: "Admin" -> "ADMIN", "Técnico" -> "TECNICO". */
+    static String normalizarRol(String rol) {
+        String sinAcentos = Normalizer.normalize(rol.trim(), Normalizer.Form.NFD).replaceAll("\\p{M}", "");
+        return sinAcentos.toUpperCase(Locale.ROOT);
     }
 }
