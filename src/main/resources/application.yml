@@ -9,16 +9,16 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${AUTH_ISSUER_URI:http://localhost:8080/realms/campuslab}
+          issuer-uri: ${AUTH_ISSUER_URI:https://login.microsoftonline.com/c75374e8-15d8-446b-8c6c-291120e0c761/v2.0}
 
 # Cluster RabbitMQ (ec2-mq): la Management API vive en el puerto 15672 del
 # mismo host donde escucha AMQP en el 5672. Credenciales de administracion
 # del broker (no confundir con las credenciales AMQP de los productores).
 campuslab:
   rabbitmq:
-    management-url: http://${RABBITMQ_HOST:localhost}:${RABBITMQ_MANAGEMENT_PORT:15672}
-    management-username: ${RABBITMQ_USERNAME:guest}
-    management-password: ${RABBITMQ_PASSWORD:guest}
+    management-url: http://${RABBITMQ_HOST:100.26.43.133}:${RABBITMQ_MANAGEMENT_PORT:15672}
+    management-username: ${RABBITMQ_USERNAME:admin}
+    management-password: ${RABBITMQ_PASSWORD:admin_dev}
     vhost: ${RABBITMQ_VHOST:/}
     # Topologia de la que dependen bookings y notify: RabbitAdminService
     # rechaza (409) actualizarla o eliminarla desde esta API. Lista separada

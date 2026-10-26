@@ -139,11 +139,15 @@ eliminar desde esta API. La lista se configura en
 
 | Variable | Descripción | Default |
 |---|---|---|
-| `RABBITMQ_HOST` | Host del broker | `localhost` |
+| `RABBITMQ_HOST` | Host del broker (instancia `ec2-mq`) | `100.26.43.133` |
 | `RABBITMQ_MANAGEMENT_PORT` | Puerto de la Management API | `15672` |
-| `RABBITMQ_USERNAME` / `RABBITMQ_PASSWORD` | Credenciales de administración | `guest` / `guest` |
+| `RABBITMQ_USERNAME` / `RABBITMQ_PASSWORD` | Credenciales de administración (RabbitMQ bloquea `guest` en conexiones remotas) | `admin` / `admin_dev` |
 | `RABBITMQ_VHOST` | Virtual host | `/` |
-| `AUTH_ISSUER_URI` | Issuer del IdP que firma los JWT | `http://localhost:8080/realms/campuslab` |
+| `AUTH_ISSUER_URI` | Issuer de Azure AD que firma los JWT | `https://login.microsoftonline.com/<tenant>/v2.0` |
+
+> En AWS Academy la IP pública de `ec2-mq` cambia cada vez que se reinicia el
+> lab. En EC2 conviene definir `RABBITMQ_HOST` con la **IP privada** de
+> `ec2-mq`, que no cambia (ver `infra/aws/README.md` en MS-Campuslab-BFF).
 
 ## Ejecutar y probar
 
