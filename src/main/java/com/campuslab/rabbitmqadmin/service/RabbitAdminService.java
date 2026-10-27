@@ -8,6 +8,7 @@ import com.campuslab.rabbitmqadmin.dto.ExchangeRequestDTO;
 import com.campuslab.rabbitmqadmin.dto.OverviewDTO;
 import com.campuslab.rabbitmqadmin.dto.QueueInfoDTO;
 import com.campuslab.rabbitmqadmin.dto.QueueRequestDTO;
+import com.campuslab.rabbitmqadmin.dto.ReprocesoDlqDTO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -43,6 +44,7 @@ import java.util.stream.Collectors;
 public class RabbitAdminService {
 
     private static final Logger log = LoggerFactory.getLogger(RabbitAdminService.class);
+    private static final String SUFIJO_DLQ = ".dlq";
 
     private final RabbitMqManagementClient client;
     private final Set<String> recursosProtegidos;
@@ -107,6 +109,72 @@ public class RabbitAdminService {
         obtenerCola(name);
         client.deleteQueue(name, soloSiEstaVacia);
         log.info("Cola {} eliminada (ifEmpty={})", name, soloSiEstaVacia);
+    }
+
+    /**
+     * Devuelve los mensajes de una DLQ a la cola de la que salieron (la que
+     * indica el header x-death, o el nombre sin ".dlq"), para que notify los
+     * vuelva a procesar una vez corregida la causa del fallo.
+     *
+     * <p>Se mueve de a un mensaje: si la cola de origen no lo acepta, se
+     * devuelve a la DLQ y se detiene. Solo se procesan los mensajes que habia
+     * al empezar, para no reciclar en el mismo pedido uno que vuelva a fallar.</p>
+     */
+    public ReprocesoDlqDTO reprocesarDlq(String dlq, int maximo) {
+        if (!dlq.endsWith(SUFIJO_DLQ)) {
+            throw new OperacionNoPermitidaException(
+                    "Solo se reprocesan colas de mensajes fallidos (" + SUFIJO_DLQ + "); " + dlq + " no lo es");
+        }
+        QueueInfoDTO cola = obtenerCola(dlq);
+        int pendientes = Math.min(maximo, cola.messages() == null ? 0 : cola.messages().intValue());
+
+        int reprocesados = 0;
+        int devueltos = 0;
+        for (int i = 0; i < pendientes; i++) {
+            List<Map<String, Object>> leidos = client.sacarMensajes(dlq, 1);
+            if (leidos.isEmpty()) {
+                break;
+            }
+            Map<String, Object> mensaje = leidos.get(0);
+            String origen = colaDeOrigen(mensaje, dlq);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> propiedades = (Map<String, Object>) mensaje.getOrDefault("properties", Map.of());
+            String payload = String.valueOf(mensaje.get("payload"));
+            String encoding = String.valueOf(mensaje.getOrDefault("payload_encoding", "string"));
+
+            if (publicarSinFallar(origen, propiedades, payload, encoding)) {
+                reprocesados++;
+                continue;
+            }
+            devueltos++;
+            if (!publicarSinFallar(dlq, propiedades, payload, encoding)) {
+                log.error("No se pudo reenviar a {} ni devolver a {} un mensaje. Cuerpo: {}", origen, dlq, payload);
+            }
+            break;
+        }
+        log.info("DLQ {}: {} mensajes devueltos a su cola de origen, {} vueltos a la DLQ", dlq, reprocesados, devueltos);
+        return new ReprocesoDlqDTO(dlq, reprocesados, devueltos);
+    }
+
+    private boolean publicarSinFallar(String cola, Map<String, Object> propiedades, String payload, String encoding) {
+        try {
+            // amq.default = exchange por defecto: enruta a la cola con ese nombre
+            return client.publicar("amq.default", cola, propiedades, payload, encoding);
+        } catch (RuntimeException ex) {
+            log.warn("Fallo al publicar en {}: {}", cola, ex.getMessage());
+            return false;
+        }
+    }
+
+    private static String colaDeOrigen(Map<String, Object> mensaje, String dlq) {
+        Object propiedades = mensaje.get("properties");
+        if (propiedades instanceof Map<?, ?> props && props.get("headers") instanceof Map<?, ?> headers
+                && headers.get("x-death") instanceof List<?> muertes && !muertes.isEmpty()
+                && muertes.get(0) instanceof Map<?, ?> primera && primera.get("queue") instanceof String cola
+                && StringUtils.hasText(cola)) {
+            return cola;
+        }
+        return dlq.substring(0, dlq.length() - SUFIJO_DLQ.length());
     }
 
     // -------------------------------------------------------------- exchanges

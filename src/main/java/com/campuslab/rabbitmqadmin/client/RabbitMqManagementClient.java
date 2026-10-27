@@ -15,6 +15,7 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.util.DefaultUriBuilderFactory;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -39,6 +40,8 @@ public class RabbitMqManagementClient {
     private static final ParameterizedTypeReference<List<ExchangeInfoDTO>> LISTA_EXCHANGES = new ParameterizedTypeReference<>() {
     };
     private static final ParameterizedTypeReference<List<BindingInfoDTO>> LISTA_BINDINGS = new ParameterizedTypeReference<>() {
+    };
+    private static final ParameterizedTypeReference<List<Map<String, Object>>> LISTA_MENSAJES = new ParameterizedTypeReference<>() {
     };
 
     private final RestClient restClient;
@@ -117,6 +120,47 @@ public class RabbitMqManagementClient {
                 .uri("/api/queues/{vhost}/{name}?if-empty={ifEmpty}", vhost, name, soloSiEstaVacia)
                 .retrieve()
                 .toBodilessEntity());
+    }
+
+    /**
+     * Saca (y confirma) hasta {@code cantidad} mensajes de la cola: el
+     * mensaje deja de estar en ella. Cada elemento trae payload,
+     * payload_encoding, routing_key, exchange y properties (con x-death).
+     */
+    public List<Map<String, Object>> sacarMensajes(String cola, int cantidad) {
+        List<Map<String, Object>> mensajes = new ArrayList<>();
+        ejecutar("leer mensajes de la cola " + cola, () -> {
+            List<Map<String, Object>> leidos = restClient.post()
+                    .uri("/api/queues/{vhost}/{name}/get", vhost, cola)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("count", cantidad, "ackmode", "ack_requeue_false", "encoding", "auto"))
+                    .retrieve()
+                    .body(LISTA_MENSAJES);
+            if (leidos != null) {
+                mensajes.addAll(leidos);
+            }
+        });
+        return mensajes;
+    }
+
+    /** Publica un mensaje; devuelve si el broker lo enruto a alguna cola. */
+    public boolean publicar(String exchange, String routingKey, Map<String, Object> properties,
+                            String payload, String payloadEncoding) {
+        boolean[] enrutado = {false};
+        ejecutar("publicar en " + exchange, () -> {
+            Map<?, ?> respuesta = restClient.post()
+                    .uri("/api/exchanges/{vhost}/{exchange}/publish", vhost, exchange)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of(
+                            "properties", properties == null ? Map.of() : properties,
+                            "routing_key", routingKey,
+                            "payload", payload,
+                            "payload_encoding", payloadEncoding))
+                    .retrieve()
+                    .body(Map.class);
+            enrutado[0] = respuesta != null && Boolean.TRUE.equals(respuesta.get("routed"));
+        });
+        return enrutado[0];
     }
 
     // -------------------------------------------------------------- exchanges

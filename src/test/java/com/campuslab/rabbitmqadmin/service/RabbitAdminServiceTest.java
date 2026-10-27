@@ -141,6 +141,44 @@ class RabbitAdminServiceTest {
         verify(client).deleteBinding("x.app", "q.app", "rk-props");
     }
 
+    @Test
+    void reprocesarDlq_devuelveCadaMensajeASuColaDeOrigenSegunXDeath() {
+        when(client.queue("q.cmd.prep.dlq")).thenReturn(Optional.of(cola("q.cmd.prep.dlq", 2, Map.of())));
+        Map<String, Object> props = Map.of("headers", Map.of("x-death", List.of(Map.of("queue", "q.cmd.prep"))));
+        when(client.sacarMensajes("q.cmd.prep.dlq", 1)).thenReturn(
+                List.of(Map.of("payload", "{\"a\":1}", "payload_encoding", "string", "properties", props)),
+                List.of(Map.of("payload", "{\"a\":2}", "payload_encoding", "string", "properties", props)));
+        when(client.publicar(eq("amq.default"), eq("q.cmd.prep"), any(), anyString(), eq("string"))).thenReturn(true);
+
+        var resultado = service.reprocesarDlq("q.cmd.prep.dlq", 100);
+
+        assertThat(resultado.reprocesados()).isEqualTo(2);
+        assertThat(resultado.devueltosALaDlq()).isZero();
+        verify(client).publicar("amq.default", "q.cmd.prep", props, "{\"a\":1}", "string");
+    }
+
+    @Test
+    void reprocesarDlq_siLaColaDeOrigenNoAceptaElMensaje_loDevuelveALaDlqYSeDetiene() {
+        when(client.queue("q.cmd.email.dlq")).thenReturn(Optional.of(cola("q.cmd.email.dlq", 5, Map.of())));
+        when(client.sacarMensajes("q.cmd.email.dlq", 1)).thenReturn(
+                List.of(Map.of("payload", "x", "payload_encoding", "string")));
+        when(client.publicar(eq("amq.default"), eq("q.cmd.email"), any(), anyString(), anyString())).thenReturn(false);
+        when(client.publicar(eq("amq.default"), eq("q.cmd.email.dlq"), any(), anyString(), anyString())).thenReturn(true);
+
+        var resultado = service.reprocesarDlq("q.cmd.email.dlq", 100);
+
+        assertThat(resultado.reprocesados()).isZero();
+        assertThat(resultado.devueltosALaDlq()).isEqualTo(1);
+        verify(client).sacarMensajes("q.cmd.email.dlq", 1); // no sigue sacando
+    }
+
+    @Test
+    void reprocesar_unaColaQueNoEsDlq_noSePermite() {
+        assertThatThrownBy(() -> service.reprocesarDlq("q.cmd.email", 10))
+                .isInstanceOf(OperacionNoPermitidaException.class);
+        verify(client, never()).sacarMensajes(anyString(), org.mockito.ArgumentMatchers.anyInt());
+    }
+
     private QueueInfoDTO cola(String name, int mensajes, Map<String, Object> argumentos) {
         return new QueueInfoDTO(name, "running", mensajes, mensajes, 0, 0, true, false, argumentos);
     }

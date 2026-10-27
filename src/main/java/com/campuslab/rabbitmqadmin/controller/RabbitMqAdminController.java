@@ -7,6 +7,7 @@ import com.campuslab.rabbitmqadmin.dto.ExchangeRequestDTO;
 import com.campuslab.rabbitmqadmin.dto.OverviewDTO;
 import com.campuslab.rabbitmqadmin.dto.QueueInfoDTO;
 import com.campuslab.rabbitmqadmin.dto.QueueRequestDTO;
+import com.campuslab.rabbitmqadmin.dto.ReprocesoDlqDTO;
 import com.campuslab.rabbitmqadmin.service.RabbitAdminService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -74,6 +75,13 @@ public class RabbitMqAdminController {
                                              @RequestParam(defaultValue = "false") boolean ifEmpty) {
         service.eliminarCola(name, ifEmpty);
         return ResponseEntity.noContent().build();
+    }
+
+    /** POST /api/admin/rabbitmq/queues/{dlq}/reprocesar?max=100 */
+    @PostMapping("/queues/{name}/reprocesar")
+    public ResponseEntity<ReprocesoDlqDTO> reprocesarDlq(@PathVariable String name,
+                                                         @RequestParam(defaultValue = "100") int max) {
+        return ResponseEntity.ok(service.reprocesarDlq(name, Math.max(1, Math.min(max, 1000))));
     }
 
     // -------------------------------------------------------------- exchanges
